@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P5 — Memory Allocation | OS Lab</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  :root { --accent-color: #ff4d88; }
+
+  .algo-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+  }
+  .algo-tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .algo-tab.active, .algo-tab:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+  .algo-tab.active { background: rgba(255,77,136,0.08); }
+
+  /* Memory visualization */
+  .mem-viz {
+    display: flex;
+    gap: 6px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .mem-block {
+    border-radius: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    min-width: 60px;
+    transition: all 0.4s cubic-bezier(0.4,0,0.2,1);
+    cursor: pointer;
+    position: relative;
+  }
+  .mem-block:hover { filter: brightness(1.2); }
+  .mem-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .mem-size {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    margin-top: 3px;
+    opacity: 0.8;
+  }
+
+  .mem-free   { background: rgba(30,30,46,1); border: 1.5px dashed #444; color: #555; }
+  .mem-free .mem-label { color: #555; }
+  .mem-free .mem-size  { color: #444; }
+  .mem-alloc  { border: none; }
+
+  /* Block-bar legend */
+  .legend-row {
+    display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px;
+  }
+  .leg-item {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted);
+  }
+  .leg-dot { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Process input rows */
+  .proc-entry {
+    display: grid;
+    grid-template-columns: 60px 1fr 1fr auto;
+    gap: 8px;
+    align-items: end;
+    margin-bottom: 8px;
+  }
+  .proc-entry .proc-id {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--accent-color);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 10px 4px;
+    border-radius: 4px;
+    text-align: center;
+  }
+  .del-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* Partition input */
+  .partition-entry {
+    display: grid;
+    grid-template-columns: 60px 1fr auto;
+    gap: 8px;
+    align-items: end;
+    margin-bottom: 8px;
+  }
+  .part-id {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 10px 4px;
+    border-radius: 4px;
+    text-align: center;
+  }
+
+  .frag-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px;
+    margin-top: 10px;
+  }
+  .frag-title {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .frag-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .frag-stat {
+    text-align: center;
+    padding: 10px;
+    background: var(--card-bg);
+    border-radius: 4px;
+  }
+  .frag-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.2rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .frag-lbl {
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .unalloc-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--danger);
+    background: rgba(239,68,68,0.12);
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+  .alloc-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(0,255,136,0.1);
+    padding: 2px 6px;
+    border-radius: 2px;
+  }
+
+  @media (max-width: 560px) {
+    .proc-entry { grid-template-columns: 50px 1fr auto; }
+    .proc-entry > div:nth-child(3) { display: none; }
+    .frag-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a href="index.html" class="back-btn">← Back to Lab</a>
+
+  <div class="page-header">
+    <span class="page-num">PRACTICAL // 05</span>
+    <h1 class="page-title">Memory <span>Allocation</span> & Fragmentation</h1>
+    <p class="page-desc">Configure memory partitions and processes. Apply First Fit, Best Fit, or Worst Fit allocation strategy. Visualize memory layout and measure internal & external fragmentation.</p>
+  </div>
+
+  <div class="theory-box">
+    <h3>📚 Theory</h3>
+    <p>Memory is divided into partitions. Allocation strategies decide which partition to assign to a process:</p>
+    <ul>
+      <li><b>First Fit</b> — Allocates the <i>first</i> hole big enough (fastest)</li>
+      <li><b>Best Fit</b> — Allocates the <i>smallest</i> hole that is big enough (least waste)</li>
+      <li><b>Worst Fit</b> — Allocates the <i>largest</i> hole (leaves largest remaining fragment)</li>
+      <li><b>Internal Fragmentation</b> — Wasted space inside an allocated partition</li>
+      <li><b>External Fragmentation</b> — Free space exists but not contiguous enough to satisfy a request</li>
+    </ul>
+  </div>
+
+  <!-- Algorithm -->
+  <div class="panel">
+    <div class="panel-title">Select Algorithm</div>
+    <div class="algo-tabs">
+      <button class="algo-tab active" onclick="setAlgo('first',this)">First Fit</button>
+      <button class="algo-tab" onclick="setAlgo('best',this)">Best Fit</button>
+      <button class="algo-tab" onclick="setAlgo('worst',this)">Worst Fit</button>
+    </div>
+  </div>
+
+  <!-- Partitions -->
+  <div class="panel">
+    <div class="panel-title">Memory Partitions (KB)</div>
+    <div id="partition-list"></div>
+    <div class="btn-group">
+      <button class="btn" onclick="addPartition()">+ Add Partition</button>
+    </div>
+  </div>
+
+  <!-- Processes -->
+  <div class="panel">
+    <div class="panel-title">Processes (Requested Size in KB)</div>
+    <div id="proc-list"></div>
+    <div class="btn-group">
+      <button class="btn" onclick="addProc()">+ Add Process</button>
+      <button class="btn btn-primary" onclick="simulate()">▶ Allocate</button>
+      <button class="btn btn-danger" onclick="reset()">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Visualization -->
+  <div class="panel hidden" id="viz-panel">
+    <div class="panel-title">Memory Layout Visualization</div>
+    <div class="mem-viz" id="mem-viz"></div>
+    <div class="legend-row" id="legend-row"></div>
+  </div>
+
+  <!-- Results table -->
+  <div class="panel hidden" id="result-panel">
+    <div class="panel-title">Allocation Results</div>
+    <div style="overflow-x:auto">
+      <table class="data-table" id="result-table">
+        <thead>
+          <tr>
+            <th>Process</th>
+            <th>Requested (KB)</th>
+            <th>Partition</th>
+            <th>Partition Size (KB)</th>
+            <th>Internal Frag (KB)</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="result-body"></tbody>
+      </table>
+    </div>
+    <div class="frag-box" id="frag-box">
+      <div class="frag-title">Fragmentation Summary</div>
+      <div class="frag-row" id="frag-row"></div>
+    </div>
+    <div class="log-box" id="log-box" style="margin-top:12px"></div>
+  </div>
+
+  <!-- Compare -->
+  <div class="panel hidden" id="compare-panel">
+    <div class="panel-title">Algorithm Comparison</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px" id="compare-grid"></div>
+  </div>
+
+</div>
+
+<script>
+let algo = 'first';
+let partCount = 0, procCount = 0;
+
+const COLORS = ['#ff4d88','#7c6fff','#00cfff','#ffd166','#00ff88','#ff6b35','#a8ff78','#f093fb'];
+
+function setAlgo(a, btn) {
+  algo = a;
+  document.querySelectorAll('.algo-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function addPartition(size=null) {
+  partCount++;
+  const el = document.createElement('div');
+  el.className = 'partition-entry';
+  el.id = `part-${partCount}`;
+  const defaultSizes = [100,500,200,300,600,150,400,250];
+  el.innerHTML = `
+    <div class="part-id">H${partCount}</div>
+    <div>
+      <label>Size (KB)</label>
+      <input type="number" id="ps-${partCount}" value="${size || defaultSizes[(partCount-1)%8]}" min="1" max="2000">
+    </div>
+    <button class="del-btn" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.getElementById('partition-list').appendChild(el);
+}
+
+function addProc(size=null) {
+  procCount++;
+  const el = document.createElement('div');
+  el.className = 'proc-entry';
+  el.id = `proc-${procCount}`;
+  const defaultSizes = [212,417,112,426,5];
+  el.innerHTML = `
+    <div class="proc-id" style="color:${COLORS[(procCount-1)%COLORS.length]}">P${procCount}</div>
+    <div>
+      <label>Size (KB)</label>
+      <input type="number" id="pr-${procCount}" value="${size || defaultSizes[(procCount-1)%5]}" min="1" max="2000">
+    </div>
+    <div>
+      <label>Name (optional)</label>
+      <input type="text" id="pn-${procCount}" value="P${procCount}" placeholder="Process ${procCount}">
+    </div>
+    <button class="del-btn" onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.getElementById('proc-list').appendChild(el);
+}
+
+function getPartitions() {
+  return Array.from(document.querySelectorAll('#partition-list .partition-entry')).map((el,i) => {
+    const id = el.id.replace('part-','');
+    return { id: `H${id}`, size: parseInt(document.getElementById(`ps-${id}`).value)||100 };
+  });
+}
+
+function getProcs() {
+  return Array.from(document.querySelectorAll('#proc-list .proc-entry')).map((el,i) => {
+    const id = el.id.replace('proc-','');
+    const name = document.getElementById(`pn-${id}`)?.value || `P${id}`;
+    return { id: name, size: parseInt(document.getElementById(`pr-${id}`).value)||100, color: COLORS[i%COLORS.length] };
+  });
+}
+
+function runAllocation(partitions, procs, strategy) {
+  const parts = partitions.map(p => ({...p, remaining: p.size, allocatedTo: null}));
+  const results = [];
+  const log = [];
+
+  procs.forEach(proc => {
+    const eligible = parts.filter(p => p.allocatedTo === null && p.remaining >= proc.size);
+    if(!eligible.length){
+      results.push({...proc, partition:null, partSize:null, internalFrag:null, status:'Not Allocated'});
+      log.push(`<span class="log-err">✗</span> ${proc.id} (${proc.size}KB) — No suitable partition found`);
+      return;
+    }
+    let chosen;
+    if(strategy === 'first') chosen = eligible[0];
+    else if(strategy === 'best') chosen = eligible.reduce((a,b) => a.size < b.size ? a : b);
+    else if(strategy === 'worst') chosen = eligible.reduce((a,b) => a.size > b.size ? a : b);
+
+    const intFrag = chosen.size - proc.size;
+    chosen.allocatedTo = proc;
+    results.push({...proc, partition:chosen.id, partSize:chosen.size, internalFrag:intFrag, status:'Allocated'});
+    log.push(`<span class="log-ok">✓</span> ${proc.id} (${proc.size}KB) → ${chosen.id} (${chosen.size}KB) | InternalFrag = ${intFrag}KB`);
+  });
+
+  return {results, parts, log};
+}
+
+function simulate() {
+  const partitions = getPartitions();
+  const procs = getProcs();
+  if(!partitions.length || !procs.length) return;
+
+  const {results, parts, log} = runAllocation(partitions, procs, algo);
+  renderViz(parts, procs);
+  renderResults(results, parts, log);
+  renderCompare(partitions, procs);
+}
+
+function renderViz(parts, procs) {
+  const viz = document.getElementById('mem-viz');
+  viz.innerHTML = '';
+  const maxSize = Math.max(...parts.map(p=>p.size));
+
+  parts.forEach(p => {
+    const heightPct = (p.size / maxSize) * 160 + 40;
+    const block = document.createElement('div');
+    block.className = 'mem-block ' + (p.allocatedTo ? 'mem-alloc' : 'mem-free');
+    block.style.height = heightPct + 'px';
+    block.style.minWidth = '70px';
+    block.style.flex = '1';
+    block.style.maxWidth = '110px';
+    if(p.allocatedTo) {
+      block.style.background = p.allocatedTo.color + 'cc';
+      block.style.border = `2px solid ${p.allocatedTo.color}`;
+    }
+    block.title = p.allocatedTo ? `${p.id}: ${p.size}KB → ${p.allocatedTo.id} (${p.allocatedTo.size}KB), Frag=${p.size-p.allocatedTo.size}KB` : `${p.id}: ${p.size}KB (Free)`;
+    block.innerHTML = `
+      <div class="mem-label" style="color:${p.allocatedTo ? '#000' : '#555'}">
+        ${p.id}<br>${p.allocatedTo ? p.allocatedTo.id : 'FREE'}
+      </div>
+      <div class="mem-size" style="color:${p.allocatedTo ? '#000a' : '#444'}">${p.size}KB</div>
+      ${p.allocatedTo && p.size > p.allocatedTo.size
+        ? `<div style="position:absolute;bottom:0;left:0;right:0;height:${((p.size-p.allocatedTo.size)/p.size*100)}%;background:rgba(255,209,102,0.25);border-top:1px dashed #ffd166;border-radius:0 0 4px 4px;"></div>`
+        : ''}
+    `;
+    viz.appendChild(block);
+  });
+
+  // Legend
+  const legend = document.getElementById('legend-row');
+  const allocProcs = parts.filter(p=>p.allocatedTo).map(p=>p.allocatedTo);
+  legend.innerHTML = `
+    <div class="leg-item"><div class="leg-dot" style="background:#1e1e2e;border:1.5px dashed #444"></div>Free Partition</div>
+    <div class="leg-item"><div class="leg-dot" style="background:rgba(255,209,102,0.3);border:1px dashed #ffd166"></div>Internal Fragmentation</div>
+    ${[...new Map(allocProcs.map(p=>[p.id,p])).values()].map(p=>`
+      <div class="leg-item"><div class="leg-dot" style="background:${p.color}"></div>${p.id}</div>
+    `).join('')}
+  `;
+
+  document.getElementById('viz-panel').classList.remove('hidden');
+}
+
+function renderResults(results, parts, log) {
+  const tbody = document.getElementById('result-body');
+  tbody.innerHTML = results.map(r => `
+    <tr>
+      <td style="color:${r.color};font-family:'Space Mono',monospace;font-weight:700">${r.id}</td>
+      <td>${r.size}</td>
+      <td style="color:var(--muted)">${r.partition || '—'}</td>
+      <td>${r.partSize || '—'}</td>
+      <td style="color:${r.internalFrag > 0 ? 'var(--warning)' : 'var(--accent)'}">${r.internalFrag !== null ? r.internalFrag : '—'}</td>
+      <td>${r.status === 'Allocated'
+        ? '<span class="alloc-tag">✓ Allocated</span>'
+        : '<span class="unalloc-tag">✗ Not Allocated</span>'}</td>
+    </tr>
+  `).join('');
+
+  const totalInternal = results.reduce((s,r) => s + (r.internalFrag||0), 0);
+  const freeParts = parts.filter(p => !p.allocatedTo);
+  const totalExternal = freeParts.reduce((s,p) => s + p.size, 0);
+  const allocated = results.filter(r=>r.status==='Allocated').length;
+  const totalMem = parts.reduce((s,p) => s + p.size, 0);
+
+  document.getElementById('frag-row').innerHTML = `
+    <div class="frag-stat">
+      <span class="frag-val" style="color:var(--warning)">${totalInternal} KB</span>
+      <span class="frag-lbl">Internal Frag</span>
+    </div>
+    <div class="frag-stat">
+      <span class="frag-val" style="color:var(--danger)">${totalExternal} KB</span>
+      <span class="frag-lbl">External Frag (Free)</span>
+    </div>
+    <div class="frag-stat">
+      <span class="frag-val" style="color:var(--accent)">${allocated}/${results.length}</span>
+      <span class="frag-lbl">Allocated</span>
+    </div>
+  `;
+
+  document.getElementById('log-box').innerHTML = log.join('\n');
+  document.getElementById('result-panel').classList.remove('hidden');
+}
+
+function renderCompare(partitions, procs) {
+  const strategies = [
+    {name:'First Fit', key:'first'},
+    {name:'Best Fit',  key:'best'},
+    {name:'Worst Fit', key:'worst'},
+  ];
+  const best = Math.min(...strategies.map(s => runAllocation(partitions, procs, s.key).results.reduce((a,r)=>a+(r.internalFrag||0),0)));
+
+  document.getElementById('compare-grid').innerHTML = strategies.map(s => {
+    const {results} = runAllocation(partitions, procs, s.key);
+    const totalFrag = results.reduce((a,r) => a+(r.internalFrag||0), 0);
+    const allocated = results.filter(r=>r.status==='Allocated').length;
+    const isBest = totalFrag === best;
+    return `
+      <div style="background:var(--bg);border:1px solid ${isBest?'var(--accent-color)':'var(--border)'};border-radius:6px;padding:14px;text-align:center">
+        <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">${s.name} ${isBest?'🏆':''}</div>
+        <div style="font-size:1.4rem;font-weight:800;color:${isBest?'var(--accent-color)':'var(--text)'};font-family:'Space Mono',monospace">${totalFrag} KB</div>
+        <div style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:2px">Internal Frag</div>
+        <div style="font-size:11px;color:var(--accent);font-family:'Space Mono',monospace;margin-top:6px">${allocated}/${procs.length} allocated</div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('compare-panel').classList.remove('hidden');
+}
+
+function reset() {
+  document.getElementById('partition-list').innerHTML = '';
+  document.getElementById('proc-list').innerHTML = '';
+  partCount = 0; procCount = 0;
+  ['viz-panel','result-panel','compare-panel'].forEach(id => document.getElementById(id).classList.add('hidden'));
+  // Default partitions and processes
+  [100,500,200,300,600].forEach(s => addPartition(s));
+  [212,417,112,426,5].forEach(s => addProc(s));
+}
+
+// Init
+[100,500,200,300,600].forEach(s => addPartition(s));
+[212,417,112,426,5].forEach(s => addProc(s));
+</script>
+</body>
+</html>

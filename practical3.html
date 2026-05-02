@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P3 — Page Replacement | OS Lab</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  :root { --accent-color: #7c6fff; }
+
+  .algo-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+  }
+  .algo-tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .algo-tab.active, .algo-tab:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+  .algo-tab.active { background: rgba(124,111,255,0.08); }
+
+  /* Page reference string input */
+  .ref-input-row {
+    display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap;
+  }
+  .ref-input-row > div:first-child { flex: 1; min-width: 200px; }
+
+  /* Simulation table */
+  .sim-table-wrap { overflow-x: auto; }
+  .sim-table {
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    min-width: 100%;
+  }
+  .sim-table th {
+    background: var(--bg);
+    color: var(--muted);
+    padding: 8px 10px;
+    text-align: center;
+    border: 1px solid var(--border);
+    font-size: 10px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .sim-table td {
+    padding: 7px 10px;
+    text-align: center;
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .sim-table .row-label {
+    background: var(--surface);
+    color: var(--muted);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  /* Fault/Hit cell coloring */
+  .cell-fault { background: rgba(239,68,68,0.15) !important; color: #ef4444; font-weight: 700; }
+  .cell-hit   { background: rgba(0,255,136,0.1) !important;  color: #00ff88; font-weight: 700; }
+  .cell-page  { color: var(--text); }
+  .cell-new   { background: rgba(124,111,255,0.15); color: var(--accent-color); font-weight: 700; }
+  .cell-victim { background: rgba(255,209,102,0.15); color: var(--warning); }
+  .cell-empty { color: var(--border); }
+
+  .summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+  }
+  .sum-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 12px;
+    text-align: center;
+  }
+  .sum-val {
+    font-family: 'Space Mono', monospace;
+    font-size: 1.6rem;
+    font-weight: 700;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .sum-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .fault-color { color: #ef4444; }
+  .hit-color { color: #00ff88; }
+  .hr-color { color: var(--accent-color); }
+
+  .compare-btn-row { margin-top: 12px; }
+  #compare-section { display:none; }
+  .compare-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+  }
+  .cmp-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    text-align: center;
+  }
+  .cmp-name {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+  .cmp-faults {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--accent-color);
+    display: block;
+    font-family: 'Space Mono', monospace;
+    margin-bottom: 4px;
+  }
+  .cmp-hits { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+  .best-algo { border-color: var(--accent-color); }
+
+  @media (max-width: 560px) {
+    .compare-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a href="index.html" class="back-btn">← Back to Lab</a>
+
+  <div class="page-header">
+    <span class="page-num">PRACTICAL // 03</span>
+    <h1 class="page-title">Page <span>Replacement</span> Algorithms</h1>
+    <p class="page-desc">Enter a page reference string, choose number of frames, and simulate FIFO, LRU, or Optimal. Each cell shows if it was a page fault or hit. Compare all algorithms side by side.</p>
+  </div>
+
+  <div class="theory-box">
+    <h3>📚 Theory</h3>
+    <p>When a process accesses a page not in memory (page fault), the OS must replace a page. Algorithms differ in which page they evict:</p>
+    <ul>
+      <li><b>FIFO</b> — Evicts the page that entered memory first (oldest page)</li>
+      <li><b>LRU (Least Recently Used)</b> — Evicts the page not used for the longest time</li>
+      <li><b>Optimal (OPT)</b> — Evicts the page that won't be used for the longest time in future (theoretical best)</li>
+      <li><b>Hit Ratio</b> = Hits / Total References &nbsp;·&nbsp; Lower page faults = better algorithm</li>
+    </ul>
+  </div>
+
+  <!-- Algorithm Selection -->
+  <div class="panel">
+    <div class="panel-title">Select Algorithm</div>
+    <div class="algo-tabs">
+      <button class="algo-tab active" onclick="setAlgo('fifo',this)">FIFO</button>
+      <button class="algo-tab" onclick="setAlgo('lru',this)">LRU</button>
+      <button class="algo-tab" onclick="setAlgo('opt',this)">Optimal (OPT)</button>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="panel">
+    <div class="panel-title">Input</div>
+    <div class="ref-input-row">
+      <div>
+        <label>Page Reference String (space or comma separated)</label>
+        <input type="text" id="ref-string" value="7 0 1 2 0 3 0 4 2 3 0 3 2 1 2 0 1 7 0 1" placeholder="e.g. 1 2 3 4 1 2 5">
+      </div>
+      <div>
+        <label>Number of Frames</label>
+        <input type="number" id="frames" value="3" min="1" max="8" style="max-width:100px;">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="simulate()">▶ Simulate</button>
+      <button class="btn" onclick="randomize()">🎲 Random</button>
+      <button class="btn btn-danger" onclick="clearSim()">✕ Clear</button>
+    </div>
+  </div>
+
+  <!-- Result -->
+  <div class="panel hidden" id="sim-panel">
+    <div class="panel-title" id="sim-title">Simulation</div>
+    <div class="sim-table-wrap">
+      <table class="sim-table" id="sim-table"></table>
+    </div>
+    <div class="summary-cards" id="summary-cards"></div>
+  </div>
+
+  <!-- Compare All -->
+  <div class="panel hidden" id="compare-outer">
+    <div class="panel-title">Compare All Algorithms</div>
+    <div class="compare-grid" id="compare-grid"></div>
+  </div>
+
+  <!-- Step Log -->
+  <div class="panel hidden" id="log-panel">
+    <div class="panel-title">Step-by-Step Log</div>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div>
+
+<script>
+let algo = 'fifo';
+
+function setAlgo(a, btn) {
+  algo = a;
+  document.querySelectorAll('.algo-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function getRefString() {
+  return document.getElementById('ref-string').value
+    .split(/[\s,]+/).map(Number).filter(n => !isNaN(n) && n >= 0);
+}
+
+function randomize() {
+  const len = Math.floor(Math.random()*10)+10;
+  const pages = Array.from({length:len}, () => Math.floor(Math.random()*8));
+  document.getElementById('ref-string').value = pages.join(' ');
+}
+
+function clearSim() {
+  document.getElementById('sim-panel').classList.add('hidden');
+  document.getElementById('compare-outer').classList.add('hidden');
+  document.getElementById('log-panel').classList.add('hidden');
+}
+
+function simulate() {
+  const refs = getRefString();
+  const nf = parseInt(document.getElementById('frames').value) || 3;
+  if(!refs.length) return;
+
+  const {states, faults, hits, log} = runAlgo(algo, refs, nf);
+  renderSim(refs, states, nf, algo.toUpperCase(), faults, hits);
+  renderLog(log);
+
+  // Compare all
+  const fifoR = runAlgo('fifo', refs, nf);
+  const lruR  = runAlgo('lru',  refs, nf);
+  const optR  = runAlgo('opt',  refs, nf);
+  renderCompare(refs.length, fifoR, lruR, optR);
+}
+
+function runAlgo(alg, refs, nf) {
+  const frames = [];
+  const states = [];
+  const log = [];
+  let faults = 0, hits = 0;
+  let queue = []; // for FIFO order
+  let lastUsed = {}; // for LRU
+
+  refs.forEach((page, idx) => {
+    const isHit = frames.includes(page);
+    let victim = null;
+
+    if(isHit) {
+      hits++;
+      if(alg === 'lru') lastUsed[page] = idx;
+      log.push(`<span class="log-ok">HIT </span> t=${idx+1}: Page ${page} → already in frames [${frames.join(',')}]`);
+    } else {
+      faults++;
+      if(frames.length < nf) {
+        frames.push(page);
+        if(alg === 'fifo') queue.push(page);
+        if(alg === 'lru') lastUsed[page] = idx;
+        log.push(`<span class="log-warn">FAULT</span> t=${idx+1}: Page ${page} → loaded (empty slot) [${frames.join(',')}]`);
+      } else {
+        // Evict
+        if(alg === 'fifo') {
+          victim = queue.shift();
+          const fi = frames.indexOf(victim);
+          frames[fi] = page;
+          queue.push(page);
+        } else if(alg === 'lru') {
+          // Evict least recently used
+          let minTime = Infinity, lruPage = -1;
+          frames.forEach(f => {
+            const t = lastUsed[f] ?? -1;
+            if(t < minTime) { minTime = t; lruPage = f; }
+          });
+          victim = lruPage;
+          frames[frames.indexOf(victim)] = page;
+          lastUsed[page] = idx;
+        } else if(alg === 'opt') {
+          // Evict page used furthest in future
+          let farthest = -1, victimPage = -1;
+          frames.forEach(f => {
+            const nextUse = refs.slice(idx+1).indexOf(f);
+            const dist = nextUse === -1 ? Infinity : nextUse;
+            if(dist > farthest) { farthest = dist; victimPage = f; }
+          });
+          victim = victimPage;
+          frames[frames.indexOf(victim)] = page;
+        }
+        delete lastUsed[victim];
+        log.push(`<span class="log-err">FAULT</span> t=${idx+1}: Page ${page} → evicted P${victim} [${frames.join(',')}]`);
+      }
+    }
+
+    states.push({
+      frames: [...frames],
+      fault: !isHit,
+      page,
+      victim
+    });
+  });
+
+  return {states, faults, hits, log};
+}
+
+function renderSim(refs, states, nf, algoName, faults, hits) {
+  document.getElementById('sim-title').textContent = `${algoName} — Simulation (${nf} Frames)`;
+  const table = document.getElementById('sim-table');
+  table.innerHTML = '';
+
+  // Header row: page references
+  const headerRow = document.createElement('tr');
+  headerRow.innerHTML = `<th style="text-align:left;min-width:80px">Step</th>` +
+    refs.map((r,i) => `<th>${i+1}</th>`).join('');
+  table.appendChild(headerRow);
+
+  // Page row
+  const pageRow = document.createElement('tr');
+  pageRow.innerHTML = `<td class="row-label">Page</td>` +
+    refs.map(r => `<td class="cell-page">${r}</td>`).join('');
+  table.appendChild(pageRow);
+
+  // Frame rows
+  for(let f=0; f<nf; f++) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="row-label">Frame ${f+1}</td>` +
+      states.map((s,i) => {
+        const val = s.frames[f];
+        if(val === undefined) return `<td class="cell-empty">—</td>`;
+        const prevVal = i > 0 ? states[i-1].frames[f] : undefined;
+        const isNew = val !== prevVal && s.fault;
+        return `<td class="${isNew ? 'cell-new' : 'cell-page'}">${val}</td>`;
+      }).join('');
+    table.appendChild(tr);
+  }
+
+  // Fault/Hit row
+  const fhRow = document.createElement('tr');
+  fhRow.innerHTML = `<td class="row-label">F / H</td>` +
+    states.map(s => s.fault
+      ? `<td class="cell-fault">F</td>`
+      : `<td class="cell-hit">H</td>`
+    ).join('');
+  table.appendChild(fhRow);
+
+  // Summary
+  const total = refs.length;
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="sum-card">
+      <span class="sum-val fault-color">${faults}</span>
+      <span class="sum-label">Page Faults</span>
+    </div>
+    <div class="sum-card">
+      <span class="sum-val hit-color">${hits}</span>
+      <span class="sum-label">Page Hits</span>
+    </div>
+    <div class="sum-card">
+      <span class="sum-val hr-color">${((hits/total)*100).toFixed(1)}%</span>
+      <span class="sum-label">Hit Ratio</span>
+    </div>
+    <div class="sum-card">
+      <span class="sum-val" style="color:var(--muted)">${total}</span>
+      <span class="sum-label">Total Refs</span>
+    </div>
+    <div class="sum-card">
+      <span class="sum-val" style="color:var(--accent-color)">${nf}</span>
+      <span class="sum-label">Frames</span>
+    </div>
+    <div class="sum-card">
+      <span class="sum-val" style="color:var(--warning)">${((faults/total)*100).toFixed(1)}%</span>
+      <span class="sum-label">Fault Rate</span>
+    </div>
+  `;
+
+  document.getElementById('sim-panel').classList.remove('hidden');
+}
+
+function renderCompare(total, fifo, lru, opt) {
+  const best = Math.min(fifo.faults, lru.faults, opt.faults);
+  const grid = document.getElementById('compare-grid');
+  grid.innerHTML = [
+    {name:'FIFO', r:fifo},
+    {name:'LRU',  r:lru},
+    {name:'OPT',  r:opt}
+  ].map(({name, r}) => `
+    <div class="cmp-card ${r.faults === best ? 'best-algo' : ''}">
+      <div class="cmp-name">${name} ${r.faults === best ? '🏆' : ''}</div>
+      <span class="cmp-faults">${r.faults}</span>
+      <div style="font-size:11px;color:var(--muted);font-family:'Space Mono',monospace">faults</div>
+      <div class="cmp-hits" style="margin-top:6px">Hits: ${r.hits} &nbsp;|&nbsp; ${((r.hits/total)*100).toFixed(1)}%</div>
+    </div>
+  `).join('');
+  document.getElementById('compare-outer').classList.remove('hidden');
+}
+
+function renderLog(log) {
+  document.getElementById('log-box').innerHTML = log.join('\n');
+  document.getElementById('log-panel').classList.remove('hidden');
+}
+
+// Auto-simulate on load
+simulate();
+</script>
+</body>
+</html>

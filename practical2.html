@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P2 — Banker's Algorithm | OS Lab</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  :root { --accent-color: #ff6b35; }
+
+  .matrix-grid {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .matrix-row {
+    display: grid;
+    gap: 8px;
+    align-items: center;
+  }
+  .proc-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent-color);
+    text-align: center;
+    padding: 8px 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .matrix-input {
+    text-align: center;
+    padding: 9px 4px !important;
+  }
+  .res-header {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .res-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--accent-color);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .safety-result {
+    margin-top: 16px;
+    padding: 20px;
+    border-radius: 6px;
+    text-align: center;
+    border: 2px solid;
+  }
+  .safety-safe {
+    background: rgba(0,255,136,0.08);
+    border-color: rgba(0,255,136,0.4);
+  }
+  .safety-unsafe {
+    background: rgba(239,68,68,0.08);
+    border-color: rgba(239,68,68,0.4);
+  }
+  .safety-icon { font-size: 2rem; margin-bottom: 8px; }
+  .safety-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .safety-seq {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .safety-seq span { color: var(--accent-color); }
+
+  .rag-canvas-wrap {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 10px;
+  }
+  canvas { display: block; width: 100%; }
+
+  .np-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .np-row label { margin: 0; white-space: nowrap; font-size: 11px; }
+  .np-row input { max-width: 70px; }
+
+  .tab-switch {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .tab-sw {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .tab-sw.active { border-color: var(--accent-color); color: var(--accent-color); background: rgba(255,107,53,0.08); }
+
+  @media (max-width:560px) {
+    .matrix-row { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a href="index.html" class="back-btn">← Back to Lab</a>
+
+  <div class="page-header">
+    <span class="page-num">PRACTICAL // 02</span>
+    <h1 class="page-title">Deadlock & <span>Banker's</span> Algorithm</h1>
+    <p class="page-desc">Configure allocation, maximum need matrices and available resources. The algorithm checks system safety and generates a safe execution sequence if one exists.</p>
+  </div>
+
+  <div class="theory-box">
+    <h3>📚 Theory</h3>
+    <p>Banker's Algorithm (Dijkstra, 1965) is a deadlock avoidance algorithm. It checks if granting a resource request leaves the system in a <b>safe state</b>.</p>
+    <ul>
+      <li><b>Allocation Matrix</b> — Resources currently held by each process</li>
+      <li><b>Maximum Matrix</b> — Maximum resources a process may need</li>
+      <li><b>Need Matrix</b> = Maximum − Allocation</li>
+      <li><b>Available Vector</b> — Resources not allocated to any process</li>
+      <li>System is <b>safe</b> if there exists an ordering (safe sequence) where all processes can finish</li>
+    </ul>
+  </div>
+
+  <!-- Config -->
+  <div class="panel">
+    <div class="panel-title">Configuration</div>
+    <div class="np-row">
+      <label>Processes (P):</label>
+      <input type="number" id="np" value="4" min="2" max="6">
+      <label>Resources (R):</label>
+      <input type="number" id="nr" value="3" min="1" max="5">
+      <button class="btn btn-primary" onclick="buildMatrices()">Build</button>
+    </div>
+  </div>
+
+  <!-- Matrices -->
+  <div id="matrices-section" class="hidden">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;" id="alloc-max-grid">
+
+      <!-- Allocation -->
+      <div class="panel">
+        <div class="panel-title">Allocation Matrix</div>
+        <div id="alloc-res-header" class="res-header"></div>
+        <div id="alloc-matrix" class="matrix-grid"></div>
+      </div>
+
+      <!-- Maximum -->
+      <div class="panel">
+        <div class="panel-title">Maximum Matrix</div>
+        <div id="max-res-header" class="res-header"></div>
+        <div id="max-matrix" class="matrix-grid"></div>
+      </div>
+
+    </div>
+
+    <!-- Available -->
+    <div class="panel">
+      <div class="panel-title">Available Resources</div>
+      <div id="avail-row" class="form-row"></div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="runBanker()">▶ Run Banker's Algorithm</button>
+      <button class="btn" onclick="loadExample()">Load Example</button>
+      <button class="btn btn-danger" onclick="buildMatrices()">↺ Rebuild</button>
+    </div>
+
+    <!-- Result -->
+    <div id="result-area"></div>
+
+    <!-- Need Matrix + Steps -->
+    <div class="panel hidden" id="detail-panel">
+      <div class="panel-title">Need Matrix (Max − Allocation)</div>
+      <div style="overflow-x:auto">
+        <table class="data-table" id="need-table">
+          <thead id="need-head"></thead>
+          <tbody id="need-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel hidden" id="steps-panel">
+      <div class="panel-title">Safety Algorithm — Step Trace</div>
+      <div class="log-box" id="steps-log"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+let NP = 4, NR = 3;
+
+function buildMatrices() {
+  NP = parseInt(document.getElementById('np').value) || 4;
+  NR = parseInt(document.getElementById('nr').value) || 3;
+
+  document.getElementById('matrices-section').classList.remove('hidden');
+  document.getElementById('result-area').innerHTML = '';
+  document.getElementById('detail-panel').classList.add('hidden');
+  document.getElementById('steps-panel').classList.add('hidden');
+
+  const resNames = Array.from({length:NR}, (_,i) => String.fromCharCode(65+i));
+
+  // Build header row function
+  function buildHeader(id) {
+    const el = document.getElementById(id);
+    el.style.gridTemplateColumns = `36px repeat(${NR}, 1fr)`;
+    el.innerHTML = `<div></div>` + resNames.map(r => `<div class="res-label">${r}</div>`).join('');
+  }
+
+  buildHeader('alloc-res-header');
+  buildHeader('max-res-header');
+
+  // Build matrix rows
+  function buildMatrix(id, prefix) {
+    const el = document.getElementById(id);
+    el.innerHTML = '';
+    el.style.gridTemplateColumns = '1fr';
+    for (let i=0;i<NP;i++){
+      const row = document.createElement('div');
+      row.className = 'matrix-row';
+      row.style.gridTemplateColumns = `36px repeat(${NR}, 1fr)`;
+      row.innerHTML = `<div class="proc-label">P${i}</div>` +
+        Array.from({length:NR},(_,j)=>`<input type="number" class="matrix-input" id="${prefix}-${i}-${j}" value="0" min="0" max="20">`).join('');
+      el.appendChild(row);
+    }
+  }
+  buildMatrix('alloc-matrix','al');
+  buildMatrix('max-matrix','mx');
+
+  // Available
+  const avail = document.getElementById('avail-row');
+  avail.style.gridTemplateColumns = `repeat(${NR}, 1fr)`;
+  avail.innerHTML = resNames.map((r,j)=>`
+    <div>
+      <label>Resource ${r}</label>
+      <input type="number" id="av-${j}" value="2" min="0" max="20">
+    </div>
+  `).join('');
+}
+
+function loadExample() {
+  // Classic textbook 5P 3R example
+  document.getElementById('np').value = 5;
+  document.getElementById('nr').value = 3;
+  buildMatrices();
+  const al = [[0,1,0],[2,0,0],[3,0,2],[2,1,1],[0,0,2]];
+  const mx = [[7,5,3],[3,2,2],[9,0,2],[2,2,2],[4,3,3]];
+  const av = [3,3,2];
+  for(let i=0;i<5;i++) for(let j=0;j<3;j++){
+    document.getElementById(`al-${i}-${j}`).value = al[i][j];
+    document.getElementById(`mx-${i}-${j}`).value = mx[i][j];
+  }
+  for(let j=0;j<3;j++) document.getElementById(`av-${j}`).value = av[j];
+}
+
+function getMatrix(prefix, n, r) {
+  return Array.from({length:n}, (_,i) => Array.from({length:r},(_,j)=>parseInt(document.getElementById(`${prefix}-${i}-${j}`).value)||0));
+}
+
+function runBanker() {
+  const alloc = getMatrix('al', NP, NR);
+  const max = getMatrix('mx', NP, NR);
+  const avail = Array.from({length:NR},(_,j)=>parseInt(document.getElementById(`av-${j}`).value)||0);
+  const need = alloc.map((row,i)=>row.map((v,j)=>max[i][j]-v));
+
+  // Validate: need shouldn't be negative
+  for(let i=0;i<NP;i++) for(let j=0;j<NR;j++){
+    if(need[i][j] < 0){
+      showResult(false, [], `P${i}: Allocation > Maximum for resource ${String.fromCharCode(65+j)}. Invalid input.`);
+      return;
+    }
+  }
+
+  // Safety algorithm
+  const work = [...avail];
+  const finish = Array(NP).fill(false);
+  const safeSeq = [];
+  const log = [];
+
+  log.push(`<span class="log-ok">INIT:</span> Work = [${work.join(', ')}], Finish = [${finish.map(f=>f?'T':'F').join(', ')}]`);
+
+  let found = true;
+  while(found) {
+    found = false;
+    for(let i=0;i<NP;i++){
+      if(!finish[i] && need[i].every((n,j)=>n<=work[j])){
+        log.push(`<span class="log-ok">STEP:</span> P${i} can proceed | Need=[${need[i].join(',')}] ≤ Work=[${work.join(',')}]`);
+        for(let j=0;j<NR;j++) work[j] += alloc[i][j];
+        finish[i] = true;
+        safeSeq.push(i);
+        log.push(`      Work updated → [${work.join(', ')}]`);
+        found = true;
+      }
+    }
+  }
+
+  const isSafe = finish.every(Boolean);
+  if(!isSafe){
+    const dead = finish.map((f,i)=>f?null:`P${i}`).filter(Boolean);
+    log.push(`<span class="log-err">DEADLOCK:</span> Processes [${dead.join(', ')}] are in deadlock!`);
+  } else {
+    log.push(`<span class="log-ok">✓ SAFE:</span> Safe sequence found → ${safeSeq.map(i=>'P'+i).join(' → ')}`);
+  }
+
+  showResult(isSafe, safeSeq, '');
+  renderNeed(need);
+  document.getElementById('steps-log').innerHTML = log.join('\n');
+  document.getElementById('detail-panel').classList.remove('hidden');
+  document.getElementById('steps-panel').classList.remove('hidden');
+}
+
+function showResult(safe, seq, msg) {
+  const area = document.getElementById('result-area');
+  if(safe){
+    area.innerHTML = `
+      <div class="safety-result safety-safe">
+        <div class="safety-icon">✅</div>
+        <div class="safety-title" style="color:var(--accent)">System is in SAFE State</div>
+        <div class="safety-seq">Safe Sequence: <span>${seq.map(i=>'P'+i).join(' → ')}</span></div>
+      </div>
+    `;
+  } else {
+    area.innerHTML = `
+      <div class="safety-result safety-unsafe">
+        <div class="safety-icon">🔴</div>
+        <div class="safety-title" style="color:var(--danger)">System is in UNSAFE State — Deadlock Possible</div>
+        <div class="safety-seq" style="color:var(--muted)">${msg || 'No safe sequence exists. Resource reallocation required.'}</div>
+      </div>
+    `;
+  }
+}
+
+function renderNeed(need) {
+  const resNames = Array.from({length:NR},(_,i)=>String.fromCharCode(65+i));
+  document.getElementById('need-head').innerHTML = `<tr><th>Process</th>${resNames.map(r=>`<th>${r}</th>`).join('')}</tr>`;
+  const tbody = document.getElementById('need-body');
+  tbody.innerHTML = '';
+  need.forEach((row,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="color:var(--accent-color);font-family:'Space Mono',monospace;font-weight:700">P${i}</td>` +
+      row.map(v=>`<td>${v}</td>`).join('');
+    tbody.appendChild(tr);
+  });
+  document.getElementById('need-table').querySelector('thead').innerHTML =
+    `<tr><th>Process</th>${resNames.map(r=>`<th>${r}</th>`).join('')}</tr>`;
+}
+
+// Init
+buildMatrices();
+loadExample();
+</script>
+</body>
+</html>

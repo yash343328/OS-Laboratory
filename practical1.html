@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P1 — CPU Scheduling | OS Lab</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  :root { --accent-color: #00ff88; }
+
+  .algo-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .algo-tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .algo-tab.active, .algo-tab:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .algo-tab.active { background: rgba(0,255,136,0.08); }
+
+  .process-row {
+    display: grid;
+    grid-template-columns: 60px 1fr 1fr 1fr 1fr auto;
+    gap: 8px;
+    align-items: end;
+    margin-bottom: 10px;
+  }
+  .process-row.header { margin-bottom: 4px; }
+  .process-row.header span {
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .del-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    padding: 8px 10px;
+    border-radius: 4px;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .del-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  .proc-id {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 10px 8px;
+    border-radius: 4px;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .gantt-wrap {
+    overflow-x: auto;
+    padding-bottom: 8px;
+  }
+  .gantt-track {
+    display: flex;
+    align-items: stretch;
+    min-height: 50px;
+    margin-bottom: 6px;
+  }
+  .g-block {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 4px;
+    color: var(--bg);
+    position: relative;
+    transition: all 0.2s;
+    min-width: 28px;
+    margin-right: 3px;
+    padding: 0 4px;
+  }
+  .g-block:hover { filter: brightness(1.2); transform: scaleY(1.05); }
+  .g-idle { background: var(--border) !important; color: var(--muted); }
+  .gantt-times {
+    display: flex;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  .gantt-times span {
+    min-width: 28px;
+    margin-right: 3px;
+    text-align: center;
+  }
+
+  #rr-quantum-row { display: none; }
+  #priority-info { display: none; font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); padding: 4px 0; }
+
+  .colors-palette {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px;
+  }
+  .color-dot {
+    width: 20px; height: 20px; border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-family: 'Space Mono', monospace; font-size: 9px; color: var(--bg); font-weight: 700;
+  }
+
+  @media (max-width: 560px) {
+    .process-row { grid-template-columns: 50px 1fr 1fr auto; }
+    .priority-col, .priority-head { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a href="index.html" class="back-btn">← Back to Lab</a>
+
+  <div class="page-header">
+    <span class="page-num">PRACTICAL // 01</span>
+    <h1 class="page-title">CPU <span>Scheduling</span> Algorithms</h1>
+    <p class="page-desc">Simulate FCFS, SJF (Non-Preemptive), Round Robin, and Priority scheduling. Add processes, choose an algorithm, and watch the Gantt Chart animate with computed metrics.</p>
+  </div>
+
+  <div class="theory-box">
+    <h3>📚 Theory</h3>
+    <p>CPU Scheduling decides the order in which processes get CPU time. Key metrics:</p>
+    <ul>
+      <li><b>Arrival Time (AT)</b> — When process enters the ready queue</li>
+      <li><b>Burst Time (BT)</b> — CPU time required by the process</li>
+      <li><b>Completion Time (CT)</b> — When process finishes execution</li>
+      <li><b>Turnaround Time (TAT)</b> = CT − AT</li>
+      <li><b>Waiting Time (WT)</b> = TAT − BT</li>
+    </ul>
+  </div>
+
+  <!-- Algorithm Selection -->
+  <div class="panel">
+    <div class="panel-title">Select Algorithm</div>
+    <div class="algo-tabs">
+      <button class="algo-tab active" onclick="setAlgo('fcfs',this)">FCFS</button>
+      <button class="algo-tab" onclick="setAlgo('sjf',this)">SJF (Non-Preemptive)</button>
+      <button class="algo-tab" onclick="setAlgo('rr',this)">Round Robin</button>
+      <button class="algo-tab" onclick="setAlgo('priority',this)">Priority</button>
+    </div>
+    <div id="rr-quantum-row">
+      <label>Time Quantum</label>
+      <input type="number" id="quantum" value="2" min="1" max="10" style="max-width:120px;">
+    </div>
+    <div id="priority-info">↑ Higher number = Higher priority</div>
+  </div>
+
+  <!-- Process Input -->
+  <div class="panel">
+    <div class="panel-title">Process Table</div>
+    <div class="process-row header">
+      <span>P#</span>
+      <span>Arrival</span>
+      <span>Burst</span>
+      <span class="priority-head">Priority</span>
+      <span></span><span></span>
+    </div>
+    <div id="process-list"></div>
+    <div class="btn-group">
+      <button class="btn" onclick="addProcess()">+ Add Process</button>
+      <button class="btn btn-primary" onclick="simulate()">▶ Simulate</button>
+      <button class="btn btn-danger" onclick="reset()">✕ Reset</button>
+    </div>
+  </div>
+
+  <!-- Gantt Chart -->
+  <div class="panel hidden" id="gantt-panel">
+    <div class="panel-title">Gantt Chart</div>
+    <div class="gantt-wrap">
+      <div class="gantt-track" id="gantt-track"></div>
+      <div class="gantt-times" id="gantt-times"></div>
+    </div>
+    <div class="colors-palette" id="legend"></div>
+  </div>
+
+  <!-- Results Table -->
+  <div class="panel hidden" id="results-panel">
+    <div class="panel-title">Detailed Results</div>
+    <div style="overflow-x:auto">
+      <table class="data-table" id="result-table">
+        <thead>
+          <tr>
+            <th>Process</th><th>AT</th><th>BT</th>
+            <th>CT</th><th>TAT</th><th>WT</th>
+          </tr>
+        </thead>
+        <tbody id="result-body"></tbody>
+      </table>
+    </div>
+    <div class="result-row" id="avg-row"></div>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div>
+
+<script>
+const COLORS = ['#00ff88','#ff6b35','#7c6fff','#ffd166','#ff4d88','#00cfff','#a8ff78','#ff9a9e','#f093fb','#4facfe'];
+let algo = 'fcfs';
+let pcount = 0;
+
+function setAlgo(a, btn) {
+  algo = a;
+  document.querySelectorAll('.algo-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('rr-quantum-row').style.display = a === 'rr' ? 'block' : 'none';
+  document.getElementById('priority-info').style.display = a === 'priority' ? 'block' : 'none';
+  // show/hide priority column
+  document.querySelectorAll('.priority-col').forEach(c => c.style.display = a === 'priority' ? '' : 'none');
+  document.querySelectorAll('.priority-head').forEach(c => c.style.display = a === 'priority' ? '' : 'none');
+}
+
+function addProcess() {
+  pcount++;
+  const pid = `P${pcount}`;
+  const color = COLORS[(pcount - 1) % COLORS.length];
+  const div = document.createElement('div');
+  div.className = 'process-row';
+  div.id = `proc-${pcount}`;
+  div.innerHTML = `
+    <div class="proc-id" style="color:${color}">${pid}</div>
+    <input type="number" id="at-${pcount}" value="${pcount-1}" min="0" placeholder="0">
+    <input type="number" id="bt-${pcount}" value="${Math.floor(Math.random()*6)+2}" min="1" placeholder="1">
+    <input type="number" id="pr-${pcount}" value="${pcount}" min="1" placeholder="1" class="priority-col" style="display:${algo==='priority'?'':'none'}">
+    <span></span>
+    <button class="del-btn" onclick="delProcess(${pcount})">✕</button>
+  `;
+  document.getElementById('process-list').appendChild(div);
+}
+
+function delProcess(id) {
+  const el = document.getElementById(`proc-${id}`);
+  if (el) el.remove();
+}
+
+function reset() {
+  document.getElementById('process-list').innerHTML = '';
+  pcount = 0;
+  document.getElementById('gantt-panel').classList.add('hidden');
+  document.getElementById('results-panel').classList.add('hidden');
+  // Add 3 default
+  addProcess(); addProcess(); addProcess();
+}
+
+function getProcesses() {
+  const rows = document.querySelectorAll('#process-list .process-row');
+  const procs = [];
+  rows.forEach(row => {
+    const id = row.id.replace('proc-','');
+    const at = parseInt(document.getElementById(`at-${id}`)?.value) || 0;
+    const bt = parseInt(document.getElementById(`bt-${id}`)?.value) || 1;
+    const pr = parseInt(document.getElementById(`pr-${id}`)?.value) || 1;
+    procs.push({ id: `P${id}`, at, bt, pr, color: COLORS[(parseInt(id)-1) % COLORS.length] });
+  });
+  return procs;
+}
+
+function simulate() {
+  const procs = getProcesses();
+  if (!procs.length) return;
+
+  let gantt = [], result = [];
+
+  if (algo === 'fcfs') result = fcfs(procs, gantt);
+  else if (algo === 'sjf') result = sjf(procs, gantt);
+  else if (algo === 'rr') result = rr(procs, gantt, parseInt(document.getElementById('quantum').value) || 2);
+  else if (algo === 'priority') result = prioritySched(procs, gantt);
+
+  renderGantt(gantt, procs);
+  renderResults(result);
+}
+
+function fcfs(procs, gantt) {
+  const ps = [...procs].sort((a,b) => a.at - b.at);
+  let time = 0;
+  return ps.map(p => {
+    if (time < p.at) { gantt.push({id:'IDLE', start:time, end:p.at}); time = p.at; }
+    const ct = time + p.bt;
+    gantt.push({id:p.id, start:time, end:ct, color:p.color});
+    time = ct;
+    const tat = ct - p.at, wt = tat - p.bt;
+    return {...p, ct, tat, wt};
+  });
+}
+
+function sjf(procs, gantt) {
+  const ps = procs.map(p => ({...p, done:false}));
+  let time = 0, done = 0, result = [];
+  while (done < ps.length) {
+    const ready = ps.filter(p => !p.done && p.at <= time);
+    if (!ready.length) {
+      const next = ps.filter(p => !p.done).sort((a,b) => a.at - b.at)[0];
+      gantt.push({id:'IDLE', start:time, end:next.at});
+      time = next.at; continue;
+    }
+    const p = ready.sort((a,b) => a.bt - b.bt)[0];
+    const ct = time + p.bt;
+    gantt.push({id:p.id, start:time, end:ct, color:p.color});
+    time = ct; p.done = true; done++;
+    result.push({...p, ct, tat:ct-p.at, wt:ct-p.at-p.bt});
+  }
+  return result;
+}
+
+function rr(procs, gantt, q) {
+  const ps = procs.map(p => ({...p, rem:p.bt, ct:0}));
+  let time = 0, queue = [], arrived = new Set();
+  const sorted = [...ps].sort((a,b) => a.at - b.at);
+
+  // Add processes arriving at t=0
+  sorted.filter(p => p.at <= 0).forEach(p => { queue.push(p); arrived.add(p.id); });
+  if (!queue.length && sorted.length) { time = sorted[0].at; queue.push(sorted[0]); arrived.add(sorted[0].id); }
+
+  let safety = 0;
+  while (queue.length && safety++ < 10000) {
+    const p = queue.shift();
+    const exec = Math.min(q, p.rem);
+    gantt.push({id:p.id, start:time, end:time+exec, color:p.color});
+    time += exec; p.rem -= exec;
+    // Add newly arrived processes
+    sorted.filter(p2 => p2.at > time - exec && p2.at <= time && !arrived.has(p2.id))
+          .forEach(p2 => { queue.push(p2); arrived.add(p2.id); });
+    if (p.rem > 0) queue.push(p);
+    else p.ct = time;
+    // Check for new arrivals if queue empty
+    if (!queue.length) {
+      const next = sorted.find(p2 => !arrived.has(p2.id));
+      if (next) { gantt.push({id:'IDLE', start:time, end:next.at}); time = next.at; queue.push(next); arrived.add(next.id); }
+    }
+  }
+  return ps.map(p => ({...p, tat:p.ct-p.at, wt:p.ct-p.at-p.bt}));
+}
+
+function prioritySched(procs, gantt) {
+  const ps = procs.map(p => ({...p, done:false}));
+  let time = 0, done = 0, result = [];
+  while (done < ps.length) {
+    const ready = ps.filter(p => !p.done && p.at <= time);
+    if (!ready.length) {
+      const next = ps.filter(p => !p.done).sort((a,b) => a.at - b.at)[0];
+      gantt.push({id:'IDLE', start:time, end:next.at}); time = next.at; continue;
+    }
+    const p = ready.sort((a,b) => b.pr - a.pr)[0];
+    const ct = time + p.bt;
+    gantt.push({id:p.id, start:time, end:ct, color:p.color});
+    time = ct; p.done = true; done++;
+    result.push({...p, ct, tat:ct-p.at, wt:ct-p.at-p.bt});
+  }
+  return result;
+}
+
+function renderGantt(gantt, procs) {
+  const track = document.getElementById('gantt-track');
+  const times = document.getElementById('gantt-times');
+  const legend = document.getElementById('legend');
+  track.innerHTML = ''; times.innerHTML = ''; legend.innerHTML = '';
+
+  const total = gantt[gantt.length-1]?.end || 1;
+  const W = Math.max(600, total * 32);
+
+  gantt.forEach(g => {
+    const w = ((g.end - g.start) / total * W);
+    const block = document.createElement('div');
+    block.className = 'g-block' + (g.id === 'IDLE' ? ' g-idle' : '');
+    block.style.width = w + 'px';
+    block.style.background = g.id === 'IDLE' ? '' : g.color;
+    block.title = `${g.id}: ${g.start}→${g.end}`;
+    block.textContent = g.id;
+    track.appendChild(block);
+  });
+
+  // Time labels
+  const shown = new Set();
+  gantt.forEach(g => {
+    [g.start, g.end].forEach(t => {
+      if (!shown.has(t)) {
+        shown.add(t);
+        const sp = document.createElement('span');
+        sp.textContent = t;
+        times.appendChild(sp);
+      }
+    });
+  });
+
+  // Legend
+  procs.forEach(p => {
+    const d = document.createElement('div');
+    d.style.display = 'flex'; d.style.alignItems = 'center'; d.style.gap = '4px';
+    d.innerHTML = `<div class="color-dot" style="background:${p.color}">${p.id}</div>`;
+    legend.appendChild(d);
+  });
+
+  document.getElementById('gantt-panel').classList.remove('hidden');
+}
+
+function renderResults(result) {
+  const tbody = document.getElementById('result-body');
+  const log = document.getElementById('log-box');
+  tbody.innerHTML = ''; log.innerHTML = '';
+
+  let totalTat = 0, totalWt = 0;
+  result.forEach(p => {
+    totalTat += p.tat; totalWt += p.wt;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="color:${p.color};font-family:'Space Mono',monospace;font-weight:700">${p.id}</td>
+      <td>${p.at}</td><td>${p.bt}</td>
+      <td style="color:var(--accent)">${p.ct}</td>
+      <td style="color:var(--warning)">${p.tat}</td>
+      <td style="color:var(--accent2)">${p.wt}</td>
+    `;
+    tbody.appendChild(tr);
+    log.innerHTML += `<span class="log-ok">✓</span> ${p.id}: CT=${p.ct}, TAT=${p.tat}, WT=${p.wt}\n`;
+  });
+
+  const n = result.length;
+  const avgRow = document.getElementById('avg-row');
+  avgRow.innerHTML = `
+    <div class="result-item">
+      <span class="result-val">${(totalTat/n).toFixed(2)}</span>
+      <span class="result-label">Avg TAT</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val">${(totalWt/n).toFixed(2)}</span>
+      <span class="result-label">Avg Waiting</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val">${n}</span>
+      <span class="result-label">Processes</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val">${algo.toUpperCase()}</span>
+      <span class="result-label">Algorithm</span>
+    </div>
+  `;
+
+  document.getElementById('results-panel').classList.remove('hidden');
+}
+
+// Init
+addProcess(); addProcess(); addProcess();
+</script>
+</body>
+</html>

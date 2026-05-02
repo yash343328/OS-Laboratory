@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P4 — Disk Scheduling | OS Lab</title>
+<link rel="stylesheet" href="shared.css">
+<style>
+  :root { --accent-color: #ffd166; }
+
+  .algo-tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;
+  }
+  .algo-tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--muted);
+    background: transparent;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .algo-tab.active, .algo-tab:hover {
+    border-color: var(--accent-color);
+    color: var(--accent-color);
+  }
+  .algo-tab.active { background: rgba(255,209,102,0.08); }
+
+  /* Seek graph */
+  .graph-container {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow-x: auto;
+    margin-top: 8px;
+  }
+  canvas#seek-canvas {
+    display: block;
+    min-width: 100%;
+  }
+
+  /* Order display */
+  .order-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 12px;
+  }
+  .chip {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: var(--border);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .chip-arrow { color: var(--accent-color); font-size: 10px; }
+  .chip-first { background: rgba(255,209,102,0.15); color: var(--accent-color); font-weight: 700; }
+  .chip-last  { background: rgba(0,255,136,0.1); color: var(--accent); font-weight: 700; }
+
+  .scan-dir-row {
+    display: flex; align-items: center; gap: 10px; margin-top: 8px;
+  }
+  .scan-dir-row label { margin: 0; }
+  #scan-dir { max-width: 160px; }
+  #scan-dir-section { display: none; }
+</style>
+</head>
+<body>
+<div class="page-wrap">
+
+  <a href="index.html" class="back-btn">← Back to Lab</a>
+
+  <div class="page-header">
+    <span class="page-num">PRACTICAL // 04</span>
+    <h1 class="page-title">Disk <span>Scheduling</span> Algorithms</h1>
+    <p class="page-desc">Simulate FCFS, SSTF, SCAN, and C-SCAN disk scheduling. Visualize the disk head movement on a seek graph. Calculate total and average seek time.</p>
+  </div>
+
+  <div class="theory-box">
+    <h3>📚 Theory</h3>
+    <p>Disk scheduling determines the order in which disk I/O requests are serviced to minimize seek time (time to move disk head).</p>
+    <ul>
+      <li><b>FCFS</b> — Serve requests in arrival order (simple but inefficient)</li>
+      <li><b>SSTF</b> — Serve the request closest to current head position (greedy)</li>
+      <li><b>SCAN (Elevator)</b> — Head moves in one direction, serves all requests, then reverses</li>
+      <li><b>C-SCAN</b> — Like SCAN but only serves on one sweep, jumps to start on reverse</li>
+      <li><b>Total Seek Time</b> = Sum of all head movements (in cylinders)</li>
+    </ul>
+  </div>
+
+  <!-- Algorithm -->
+  <div class="panel">
+    <div class="panel-title">Select Algorithm</div>
+    <div class="algo-tabs">
+      <button class="algo-tab active" onclick="setAlgo('fcfs',this)">FCFS</button>
+      <button class="algo-tab" onclick="setAlgo('sstf',this)">SSTF</button>
+      <button class="algo-tab" onclick="setAlgo('scan',this)">SCAN</button>
+      <button class="algo-tab" onclick="setAlgo('cscan',this)">C-SCAN</button>
+    </div>
+    <div id="scan-dir-section">
+      <div class="scan-dir-row">
+        <label>Initial Direction:</label>
+        <select id="scan-dir">
+          <option value="right">→ Right (toward higher)</option>
+          <option value="left">← Left (toward lower)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Input -->
+  <div class="panel">
+    <div class="panel-title">Input</div>
+    <div class="form-row">
+      <div>
+        <label>Request Queue (space/comma separated)</label>
+        <input type="text" id="requests" value="98 183 37 122 14 124 65 67" placeholder="e.g. 98 183 37 122">
+      </div>
+      <div>
+        <label>Initial Head Position</label>
+        <input type="number" id="head" value="53" min="0" max="199">
+      </div>
+      <div>
+        <label>Disk Size (cylinders)</label>
+        <input type="number" id="disk-size" value="200" min="50" max="500">
+      </div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="simulate()">▶ Simulate</button>
+      <button class="btn" onclick="randomize()">🎲 Random</button>
+      <button class="btn btn-danger" onclick="clearSim()">✕ Clear</button>
+    </div>
+  </div>
+
+  <!-- Graph -->
+  <div class="panel hidden" id="graph-panel">
+    <div class="panel-title" id="graph-title">Seek Graph</div>
+    <div class="graph-container">
+      <canvas id="seek-canvas" height="300"></canvas>
+    </div>
+    <div class="order-chips" id="order-chips"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="panel hidden" id="result-panel">
+    <div class="panel-title">Results</div>
+    <div class="result-row" id="result-cards"></div>
+    <div style="overflow-x:auto;margin-top:14px">
+      <table class="data-table" id="result-table">
+        <thead>
+          <tr>
+            <th>Step</th>
+            <th>From</th>
+            <th>To</th>
+            <th>Seek Distance</th>
+            <th>Cumulative</th>
+          </tr>
+        </thead>
+        <tbody id="result-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Compare -->
+  <div class="panel hidden" id="compare-panel">
+    <div class="panel-title">Algorithm Comparison</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-top:8px" id="compare-grid"></div>
+  </div>
+
+</div>
+
+<script>
+let algo = 'fcfs';
+
+function setAlgo(a, btn) {
+  algo = a;
+  document.querySelectorAll('.algo-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('scan-dir-section').style.display = (a==='scan'||a==='cscan') ? 'block' : 'none';
+}
+
+function getRequests() {
+  return document.getElementById('requests').value
+    .split(/[\s,]+/).map(Number).filter(n => !isNaN(n) && n >= 0);
+}
+
+function randomize() {
+  const n = Math.floor(Math.random()*6)+5;
+  const reqs = Array.from({length:n}, () => Math.floor(Math.random()*200));
+  document.getElementById('requests').value = reqs.join(' ');
+  document.getElementById('head').value = Math.floor(Math.random()*200);
+}
+
+function clearSim() {
+  ['graph-panel','result-panel','compare-panel'].forEach(id => document.getElementById(id).classList.add('hidden'));
+}
+
+function simulate() {
+  const reqs = getRequests();
+  const head = parseInt(document.getElementById('head').value) || 53;
+  const diskSize = parseInt(document.getElementById('disk-size').value) || 200;
+  const dir = document.getElementById('scan-dir').value;
+  if(!reqs.length) return;
+
+  let order;
+  if(algo === 'fcfs')  order = fcfs(reqs, head);
+  else if(algo === 'sstf') order = sstf(reqs, head);
+  else if(algo === 'scan')  order = scan(reqs, head, diskSize, dir);
+  else if(algo === 'cscan') order = cscan(reqs, head, diskSize, dir);
+
+  renderGraph([head, ...order], head, diskSize);
+  renderResults([head, ...order]);
+  renderCompare(reqs, head, diskSize, dir);
+}
+
+function fcfs(reqs, head) { return [...reqs]; }
+
+function sstf(reqs, head) {
+  const q = [...reqs];
+  const order = [];
+  let cur = head;
+  while(q.length) {
+    q.sort((a,b) => Math.abs(a-cur) - Math.abs(b-cur));
+    const next = q.shift();
+    order.push(next);
+    cur = next;
+  }
+  return order;
+}
+
+function scan(reqs, head, diskSize, dir) {
+  const sorted = [...reqs].sort((a,b)=>a-b);
+  const left = sorted.filter(r => r < head);
+  const right = sorted.filter(r => r >= head);
+  if(dir === 'right') return [...right, diskSize-1, ...left.reverse()];
+  else return [...left.reverse(), 0, ...right];
+}
+
+function cscan(reqs, head, diskSize, dir) {
+  const sorted = [...reqs].sort((a,b)=>a-b);
+  const left = sorted.filter(r => r < head);
+  const right = sorted.filter(r => r >= head);
+  if(dir === 'right') return [...right, diskSize-1, 0, ...left];
+  else return [...left.reverse(), 0, diskSize-1, ...right.reverse()];
+}
+
+function calcMoves(seq) {
+  const moves = [];
+  let total = 0;
+  for(let i=1;i<seq.length;i++){
+    const d = Math.abs(seq[i]-seq[i-1]);
+    total += d;
+    moves.push({from:seq[i-1], to:seq[i], dist:d, cum:total});
+  }
+  return {moves, total};
+}
+
+function renderGraph(seq, head, diskSize) {
+  const canvas = document.getElementById('seek-canvas');
+  const W = Math.max(600, canvas.parentElement.offsetWidth - 32);
+  canvas.width = W;
+  canvas.height = 300;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,W,300);
+
+  const PAD_L = 50, PAD_R = 20, PAD_T = 30, PAD_B = 40;
+  const gW = W - PAD_L - PAD_R;
+  const gH = 300 - PAD_T - PAD_B;
+
+  const n = seq.length;
+  const xStep = gW / (n - 1);
+  const yScale = v => PAD_T + (v / (diskSize-1)) * gH;
+  const xAt = i => PAD_L + i * xStep;
+
+  // Grid lines
+  ctx.strokeStyle = '#1e1e2e'; ctx.lineWidth = 1;
+  for(let t=0;t<=10;t++){
+    const y = PAD_T + (t/10) * gH;
+    ctx.beginPath(); ctx.moveTo(PAD_L, y); ctx.lineTo(W-PAD_R, y); ctx.stroke();
+    ctx.fillStyle = '#6b6b80'; ctx.font = '10px monospace';
+    ctx.fillText(Math.round((diskSize-1)*(1-t/10)), 4, y+4);
+  }
+
+  // X axis labels
+  seq.forEach((v,i) => {
+    const x = xAt(i);
+    ctx.fillStyle = '#6b6b80'; ctx.font = '9px monospace';
+    ctx.fillText(v, x-8, 300-PAD_B+14);
+  });
+
+  // Draw path
+  ctx.beginPath();
+  ctx.moveTo(xAt(0), yScale(seq[0]));
+  for(let i=1;i<n;i++) ctx.lineTo(xAt(i), yScale(seq[i]));
+  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Points
+  seq.forEach((v,i) => {
+    const x = xAt(i), y = yScale(v);
+    ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2);
+    ctx.fillStyle = i===0 ? '#00ff88' : i===n-1 ? '#ff6b35' : '#ffd166';
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0f'; ctx.lineWidth = 1.5; ctx.stroke();
+  });
+
+  // Head label
+  ctx.fillStyle = '#00ff88'; ctx.font = 'bold 11px monospace';
+  ctx.fillText(`HEAD: ${seq[0]}`, xAt(0)+6, yScale(seq[0])-8);
+
+  document.getElementById('graph-title').textContent = `${algo.toUpperCase()} — Seek Graph`;
+  document.getElementById('graph-panel').classList.remove('hidden');
+
+  // Order chips
+  const chips = document.getElementById('order-chips');
+  chips.innerHTML = seq.map((v,i) =>
+    `<div class="chip ${i===0?'chip-first':i===seq.length-1?'chip-last':''}">
+      ${v}${i<seq.length-1?'<span class="chip-arrow">→</span>':''}
+    </div>`
+  ).join('');
+}
+
+function renderResults(seq) {
+  const {moves, total} = calcMoves(seq);
+  const n = moves.length;
+
+  document.getElementById('result-cards').innerHTML = `
+    <div class="result-item">
+      <span class="result-val" style="color:var(--accent-color)">${total}</span>
+      <span class="result-label">Total Seek</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val" style="color:var(--accent)">${(total/n).toFixed(1)}</span>
+      <span class="result-label">Avg Seek</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val" style="color:var(--muted)">${n}</span>
+      <span class="result-label">Requests</span>
+    </div>
+    <div class="result-item">
+      <span class="result-val" style="color:var(--accent3)">${algo.toUpperCase()}</span>
+      <span class="result-label">Algorithm</span>
+    </div>
+  `;
+
+  const tbody = document.getElementById('result-body');
+  tbody.innerHTML = moves.map((m,i) => `
+    <tr>
+      <td style="font-family:'Space Mono',monospace;color:var(--muted)">${i+1}</td>
+      <td style="color:var(--accent)">${m.from}</td>
+      <td style="color:var(--text)">${m.to}</td>
+      <td style="color:var(--accent-color);font-weight:700">${m.dist}</td>
+      <td style="color:var(--muted)">${m.cum}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('result-panel').classList.remove('hidden');
+}
+
+function renderCompare(reqs, head, diskSize, dir) {
+  const results = {
+    FCFS:  calcMoves([head, ...fcfs(reqs,head)]).total,
+    SSTF:  calcMoves([head, ...sstf(reqs,head)]).total,
+    SCAN:  calcMoves([head, ...scan(reqs,head,diskSize,dir)]).total,
+    'C-SCAN': calcMoves([head, ...cscan(reqs,head,diskSize,dir)]).total,
+  };
+  const best = Math.min(...Object.values(results));
+  const grid = document.getElementById('compare-grid');
+  grid.innerHTML = Object.entries(results).map(([name,total]) => `
+    <div style="background:var(--bg);border:1px solid ${total===best?'var(--accent-color)':'var(--border)'};border-radius:6px;padding:14px;text-align:center;">
+      <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:1px;margin-bottom:8px;text-transform:uppercase">${name} ${total===best?'🏆':''}</div>
+      <div style="font-size:1.5rem;font-weight:800;color:${total===best?'var(--accent-color)':'var(--text)'};font-family:'Space Mono',monospace">${total}</div>
+      <div style="font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-top:2px">seek dist</div>
+    </div>
+  `).join('');
+  document.getElementById('compare-panel').classList.remove('hidden');
+}
+
+simulate();
+</script>
+</body>
+</html>
