@@ -40,7 +40,7 @@ This project helps students understand theoretical OS concepts with real-time vi
 
 ## 📂 Project Structure
 
-OS-Laboratory/
+OS-Laboratory
 │── index.html
 │── practical1.html
 │── practical2.html
@@ -49,9 +49,8 @@ OS-Laboratory/
 │── practical5.html
 │
 ├── assets/
-│   └── preview.png
-│
-└── README.md
+   └── preview.png
+
 ---
 ## 📸 Preview
 
