@@ -2,8 +2,6 @@
 
 > Interactive Operating System practicals and simulations built for students to learn core OS concepts visually through modern browser-based labs.
 
-![OS Laboratory Preview](assets/preview.png)
-
 ## 📌 Description
 
 **OS Laboratory** is a modern educational web project designed to simplify Operating System concepts using interactive simulations and practical implementations.
@@ -54,6 +52,12 @@ OS-Laboratory/
 │   └── preview.png
 │
 └── README.md
+---
+## 📸 Preview
+
+<p align="center">
+  <img src="assets/Preview.png" width="800"/>
+</p>
 ---
 
 ## 🌐 Live Demo
