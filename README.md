@@ -39,7 +39,7 @@ This project helps students understand theoretical OS concepts with real-time vi
 ---
 
 ## 📂 Project Structure
-
+```bash
 OS-Laboratory
 │── index.html
 │── practical1.html
@@ -50,7 +50,7 @@ OS-Laboratory
 │
 ├── assets/
    └── preview.png
-
+```
 ---
 ## 📸 Preview
 
